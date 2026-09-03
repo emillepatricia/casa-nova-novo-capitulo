@@ -204,6 +204,7 @@ p {
   font-size: 18px;
   line-height: 1.65;
   max-width: 680px;
+  white-space: pre-line;
 }
 
 .hero-actions,
