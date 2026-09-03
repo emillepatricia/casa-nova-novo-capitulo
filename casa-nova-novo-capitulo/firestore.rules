@@ -1,0 +1,69 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isOwner() {
+      return request.auth != null
+        && request.auth.token.email in ["seu-email@gmail.com"];
+    }
+
+    function isGuest() {
+      return request.auth == null;
+    }
+
+    function itemReservationPath(itemId) {
+      return /databases/$(database)/documents/reservations/$(itemId);
+    }
+
+    function hasValidReservationData(itemId) {
+      return request.resource.data.keys().hasOnly([
+          "itemId",
+          "itemName",
+          "category",
+          "name",
+          "phone",
+          "message",
+          "received",
+          "createdAt"
+        ])
+        && request.resource.data.itemId == itemId
+        && request.resource.data.itemName is string
+        && request.resource.data.itemName.size() >= 2
+        && request.resource.data.itemName.size() <= 100
+        && request.resource.data.category is string
+        && request.resource.data.category.size() >= 2
+        && request.resource.data.category.size() <= 40
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 2
+        && request.resource.data.name.size() <= 80
+        && request.resource.data.phone is string
+        && request.resource.data.phone.size() <= 30
+        && request.resource.data.message is string
+        && request.resource.data.message.size() <= 180
+        && request.resource.data.received == false
+        && request.resource.data.createdAt is timestamp;
+    }
+
+    function guestCanReserveItem(itemId) {
+      return isGuest()
+        && resource.data.status == "available"
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "reservedAt"])
+        && request.resource.data.status == "reserved"
+        && request.resource.data.reservedAt is timestamp
+        && existsAfter(itemReservationPath(itemId))
+        && getAfter(itemReservationPath(itemId)).data.itemId == itemId;
+    }
+
+    match /items/{itemId} {
+      allow read: if true;
+      allow create, delete: if isOwner();
+      allow update: if isOwner() || guestCanReserveItem(itemId);
+    }
+
+    match /reservations/{itemId} {
+      allow read, update, delete: if isOwner();
+      allow create: if isGuest()
+        && !exists(itemReservationPath(itemId))
+        && hasValidReservationData(itemId);
+    }
+  }
+}
